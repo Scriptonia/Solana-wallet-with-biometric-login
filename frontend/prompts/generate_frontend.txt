@@ -1,0 +1,71 @@
+You are an expert Frontend Developer specializing in secure web applications for blockchain wallets. Your task is to generate complete, production-ready frontend code for the "Secure Solana Wallet with Biometric Login and Advanced Safe Mode" project. This is a web application (deployable as a browser extension and standalone web app) built on the Solana blockchain, emphasizing user security through biometric authentication and advanced transaction safeguards.
+
+### Project Overview
+- **Title**: Secure Solana Wallet with Biometric Login and Advanced Safe Mode
+- **Description**: Develop a user-friendly, secure Solana wallet web app that integrates biometric login (fingerprint, FaceID/Face Unlock, WebAuthn-based biometrics like TouchID or Windows Hello) for seamless access. Implement a "Safe Mode" that automatically flags and blocks suspicious transactions based on criteria like large amounts (e.g., >5 SOL threshold, configurable), first-time or blacklisted addresses, unusual program instructions (e.g., non-standard SPL token transfers), and deviations from user behavior patterns (e.g., unusual transaction frequency via local analytics). Include phishing prevention via URL/domain validation, full transaction simulation previews using Solana's simulateTransaction RPC, and real-time checks against external threat databases (e.g., PhishTank API or Solana-specific feeds). Support SPL tokens, NFTs (with metadata fetching), DeFi protocols (e.g., Serum, Raydium integration previews), transaction decoding, and optional hardware wallet compatibility (Ledger via WebUSB, YubiKey via WebAuthn extensions). The app targets Solana users: beginners for easy entry, DeFi/NFT traders for safety, and security-focused individuals to mitigate scams.
+- **Target Platforms**: Primary web app for desktop/mobile browsers (Chrome, Firefox, Safari); structure code to easily adapt to browser extension manifest (e.g., popup UI for extension mode). Future optional desktop app via Electron.
+- **Key Security Principles**: Never store private keys in plain text—use encrypted local storage (e.g., Web Crypto API for key derivation) or secure enclaves. All biometric ops via WebAuthn API. Simulate transactions client-side before signing. Display clear warnings for risks. Ensure cross-origin isolation for CSP.
+
+### Technical Stack and Constraints
+- **Framework**: Next.js 14+ with App Router (for server-side rendering of non-sensitive pages; client-side for wallet ops to avoid key exposure).
+- **Styling**: TailwindCSS v3+ for responsive, utility-first design (mobile-first: support 320px+ screens; dark/light mode toggle via user preference).
+- **Language**: TypeScript 5+ (strict mode, full type safety for Solana types via @solana/web3.js).
+- **State Management**: Zustand for lightweight, performant global state (e.g., wallet connection, Safe Mode flags, user behavior history); avoid Redux unless complex async needed.
+- **Solana Integration**: @solana/web3.js v1.87+ for RPC interactions (use mainnet-beta RPC endpoints like https://api.mainnet-beta.solana.com; fallback to Helius or QuickNode). @solana/wallet-adapter-react for UI-agnostic wallet hooks, but customize for biometric/hardware. Use ConnectionProvider for RPC management.
+- **Biometrics**: WebAuthn API (navigator.credentials.create/get) for cross-platform auth; polyfill for older browsers if needed. Fallback to mnemonic entry for unsupported devices.
+- **Other Libraries**:
+  - @tanstack/react-query for API caching/fetching (e.g., threat database queries).
+  - Lucide React for icons (secure, lightweight).
+  - Framer Motion for subtle animations (e.g., warning modals, loading spinners).
+  - No external auth libs—implement custom WebAuthn flow.
+- **Build/Deployment**: Optimize for Vercel (static export for extension assets). Include ESLint/Prettier config, Husky for pre-commit hooks. Ensure code is tree-shakable and bundle size <2MB gzipped.
+- **Accessibility**: WCAG 2.1 AA compliant (ARIA labels for wallet UI, keyboard nav for modals, high-contrast modes).
+- **Performance**: Lazy-load heavy components (e.g., NFT gallery); use React.memo for transaction lists.
+
+### Backend Coordination (API Contracts)
+Assume BackendDev has provided these REST/GraphQL endpoints (use fetch or Axios with auth headers via derived session tokens post-biometric login). Mock them in dev with MSW if needed:
+- **Auth**: POST /api/biometric-challenge (returns WebAuthn challenge); POST /api/verify-biometric (verifies credential, returns encrypted session token).
+- **Wallet Ops**: GET /api/wallet/balance (params: {publicKey}); POST /api/transactions/simulate (body: {transaction: base64-encoded tx}); GET /api/threats/check (params: {url, address, txHash}—returns risk score 0-100).
+- **Safe Mode**: POST /api/safe-mode/flags (body: {txData}—flags risks); GET /api/user-behavior (returns anonymized history for deviation checks).
+- **External Integrations**: Use client-side for Solana RPC (no backend proxy for tx signing to minimize trust). For phishing DBs: Direct client fetches to PhishTank API with CORS headers.
+- **Error Handling**: All API calls wrapped in try-catch with user-friendly toasts (e.g., via react-hot-toast). Retry logic for RPC flakes.
+
+### UI Structure and Pages/Components
+Generate a full Next.js app structure under /app directory. Use TypeScript interfaces for all props/data (e.g., interface TransactionRisk { amount: number; addressBlacklisted: boolean; ... }). Focus on intuitive, trust-building design: Clean sans-serif fonts (Inter via Tailwind), Solana-themed blues/greens, prominent warning banners in red/orange.
+
+- **Pages/Layouts**:
+  - **/ (Dashboard)**: Post-login overview. Components: BalanceCard (SPL tokens/NFT counts via @solana/spl-token), RecentTxList (decoded txs with Safe Mode badges: "Safe" green, "Warning" yellow, "Blocked" red), SafeModeToggle (switch with tooltip explaining flags: large amounts >5 SOL, blacklisted addrs from backend feed, unusual instructions via tx simulation, behavior deviations like >10 txs/hour).
+  - **/login**: Biometric auth flow. Steps: 1) Detect device biometrics (navigator.credentials). 2) Challenge creation. 3) Credential assertion. Fallback: Mnemonic input with derivation path (m/44'/501'/0'/0'). On success, redirect to dashboard with session store in Zustand.
+  - **/transactions/send**: Tx builder. Form for recipient addr, amount, memo. Real-time validation: Address lookup (via backend or Solana RPC), amount threshold check. Button triggers simulation preview modal (decode instructions with @solana/web3.js TransactionInstruction). If risky, show BlockWarningModal with details (e.g., "First-time addr + large SOL—confirm?") and optional override toggle (Safe Mode off for power users).
+  - **/assets**: Portfolio view. Tabs: Tokens (SPL list with balances), NFTs (grid with metadata from Metaplex API), DeFi (positions preview via Jupiter API integration). Each item clickable for details, with phishing URL validator on external links (e.g., warn if domain != trusted like magic.earth).
+  - **/settings**: User prefs. Sections: Biometric setup (re-register WebAuthn), Safe Mode config (sliders for thresholds, enable hardware wallet pairing), Export data (encrypted mnemonic backup), Privacy (clear behavior history).
+
+- **Core Components** (in /components/ui and /components/wallet)**:
+  - **BiometricButton**: Custom button that initiates WebAuthn.get() with options {publicKey: {allowCredentials: [...], ...}}. Handles success/fail with loading spinner and error toast ("Biometrics unavailable—use mnemonic").
+  - **TransactionPreview**: Modal with full sim results (e.g., pre/post balances, instruction breakdown: "Transfer 1 SOL to addr X—simulated success"). Risk indicators: Icons for flags (e.g., skull for blacklisted). Integrate behavioral check: Compare tx pattern to Zustand-stored history (e.g., if avg tx <1 SOL but this >10, flag deviation).
+  - **PhishingGuard**: HOC or hook that wraps links/buttons. Validates URL against backend /api/threats/check; blocks with overlay ("Phishing risk detected—abort?"). For tx signing, preview decoded programs (e.g., "Jupiter swap—safe" vs. "Unknown PDA—risky").
+  - **HardwareWalletConnector**: Modal for Ledger/YubiKey. Use WebUSB for Ledger transport (connect, getDeviceInfo, signTransaction). Fallback to WebAuthn for YubiKey. Display pairing status in settings.
+  - **WarningToast**: Custom notifications for risks (e.g., "Safe Mode blocked suspicious tx to blacklisted addr").
+  - **Shared**: Navbar (connect/disconnect wallet btn), Footer (legal links), LoadingSkeleton for tx lists.
+
+- **State Management Example** (Zustand store):
+  ```typescript
+  import { create } from 'zustand';
+  interface WalletState { connected: boolean; publicKey: PublicKey | null; safeModeEnabled: boolean; behaviorHistory: Transaction[]; setSafeMode: (enabled: boolean) => void; ... }
+  const useWalletStore = create<WalletState>((set) => ({ ... }));
+  ```
+  Persist via middleware for localStorage (encrypted).
+
+- **Custom Hooks**:
+  - useBiometricAuth(): Returns { authenticate: () => Promise<AuthenticatorAssertionResponse>, isSupported: boolean }.
+  - useTransactionSimulation(): Takes raw tx, calls Solana simulateTransaction, parses risks with heuristics (e.g., if instructions.length >5, flag unusual).
+  - usePhishingCheck(): Debounced fetch to backend/external API.
+
+### Generation Guidelines
+- **Uniqueness**: Ensure all code is original—no copied snippets. Use Solana-specific patterns (e.g., derive PDA for token accounts). Add unique touches: Gamified Safe Mode score (e.g., "Your security streak: 5 days") based on avoided risks.
+- **Comprehensiveness**: Output full file tree (e.g., app/layout.tsx, components/BiometricButton.tsx, etc.) with complete code. Include package.json dependencies, next.config.js (for CSP: script-src 'self' https://api.mainnet-beta.solana.com), and tailwind.config.js (custom colors: primary-blue #9945FF).
+- **Testing/Edge Cases**: Add inline comments for edges (e.g., offline mode: queue txs; low-balance warnings). Suggest Vitest unit tests for hooks (e.g., mock WebAuthn).
+- **Unique Identifier**: Embed project ID "1763624900469_secure_solana_wallet_with_biometric_login_and_advanced_safe_mode__frontend__prompts_generate_frontend_txt_8px5wu" in a non-user-facing comment (e.g., for versioning).
+- **Output Format**: Structure as a ZIP-like directory listing with full code files. Start with README.md explaining setup (npm i, npm run dev). Ensure mobile responsiveness (e.g., Tailwind sm/md breakpoints for tx forms).
+
+Generate the entire frontend codebase now, ensuring it's secure, performant, and aligned with the described features. If any assumptions needed (e.g., exact backend response shapes), use TypeScript interfaces like { success: boolean; riskScore: number; details: string[] }.

@@ -1,0 +1,237 @@
+// Prisma Schema for Secure Solana Wallet
+// Unique ID: 1763624900451_secure_solana_wallet_with_biometric_login_and_advanced_safe_mode__db_schema_md_3sqdeh
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                String   @id @default(cuid())
+  email             String?  @unique
+  username          String?  @unique
+  solanaPublicKey   String   @unique
+  safeModeEnabled   Boolean  @default(true)
+  riskThreshold     Float    @default(0.5)
+  biometricPrefs    Json?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  lastActivity      DateTime @default(now()) @updatedAt
+  isActive          Boolean  @default(true)
+
+  sessions          Session[]
+  wallets           Wallet[]
+  transactions      Transaction[]
+  behaviorProfiles  BehaviorProfile[]
+  authenticators    Authenticator[]
+
+  @@map("users")
+  @@index([solanaPublicKey])
+  @@index([email])
+}
+
+model Authenticator {
+  id                 String   @id @default(cuid())
+  userId             String
+  user               User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  credentialId       String   @unique
+  publicKey          Bytes
+  signCount          Int      @default(0)
+  transports         String[]
+  createdAt          DateTime @default(now())
+  lastUsedAt         DateTime @updatedAt
+
+  @@map("authenticators")
+  @@index([userId, credentialId])
+  @@index([lastUsedAt])
+}
+
+model Session {
+  id               String     @id @default(cuid())
+  userId           String
+  authenticatorId  String?
+  authMethod       AuthMethod
+  challenge        String?
+  expiry           DateTime
+  isValid          Boolean    @default(true)
+  createdAt        DateTime   @default(now())
+  token            String?    @unique
+  ipAddress        String?
+  userAgent        String?
+
+  user             User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, authenticatorId])
+  @@map("sessions")
+  @@index([userId])
+  @@index([expiry])
+  @@index([token])
+}
+
+enum AuthMethod {
+  FINGERPRINT
+  FACEID
+  WEBAUTHN_TOUCHID
+  WEBAUTHN_WINDOWS_HELLO
+  HARDWARE_LEDGER
+  HARDWARE_YUBIKEY
+}
+
+model Wallet {
+  id              String   @id @default(cuid())
+  userId          String
+  publicKey       String   @unique
+  label           String?
+  isPrimary       Boolean  @default(false)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  balance         Float?   @default(0)
+
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactions    Transaction[]
+  assets          AssetCache[]
+
+  @@map("wallets")
+  @@index([userId])
+  @@index([publicKey])
+}
+
+model Transaction {
+  id                String         @id @default(cuid())
+  signature         String?        @unique
+  walletId          String
+  userId            String
+  amount            Decimal?
+  recipientAddress  String?
+  instructions      Json?
+  simulationResult  Json?
+  riskScore         Float          @default(0.0)
+  isSigned          Boolean        @default(false)
+  isBlocked         Boolean        @default(false)
+  phishingWarning   Boolean        @default(false)
+  status            String         @default("pending")
+  createdAt         DateTime       @default(now())
+  signedAt          DateTime?
+  broadcastAt       DateTime?
+
+  wallet            Wallet         @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  user              User           @relation(fields: [userId], references: [id])
+  riskFlags         RiskFlag[]
+  defiInteractions  DeFiInteraction[]
+
+  @@map("transactions")
+  @@index([userId])
+  @@index([walletId])
+  @@index([signature])
+  @@index([createdAt])
+  @@index([riskScore])
+}
+
+model RiskFlag {
+  id               String      @id @default(cuid())
+  transactionId    String?
+  flagType         FlagType
+  details          Json?
+  severity         Severity    @default(MEDIUM)
+  createdAt        DateTime    @default(now())
+
+  transaction      Transaction? @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+
+  @@map("risk_flags")
+  @@index([transactionId])
+}
+
+enum FlagType {
+  LARGE_AMOUNT
+  FIRST_TIME_ADDRESS
+  BLACKLISTED_ADDRESS
+  UNUSUAL_INSTRUCTIONS
+  BEHAVIOR_DEVIATION
+  PHISHING_RISK
+}
+
+enum Severity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+model BehaviorProfile {
+  id              String   @id @default(cuid())
+  userId          String   @unique
+  avgAmount       Decimal  @default(0)
+  commonAddresses Json?
+  txnFrequency    Int      @default(0)
+  deviationScore  Float    @default(0.0)
+  updatedAt       DateTime @updatedAt
+
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("behavior_profiles")
+  @@index([userId])
+}
+
+model ThreatCache {
+  id          String     @id @default(cuid())
+  type        CacheType
+  value       String     @unique
+  source      String
+  isActive    Boolean    @default(true)
+  lastUpdated DateTime   @default(now())
+  expiresAt   DateTime
+
+  @@map("threat_caches")
+  @@index([type])
+  @@index([value])
+  @@index([expiresAt])
+}
+
+enum CacheType {
+  PHISHING_URL
+  BLACKLISTED_DOMAIN
+  THREAT_ADDRESS
+  SUSPICIOUS_PROTOCOL
+}
+
+model AssetCache {
+  id           String    @id @default(cuid())
+  walletId     String
+  mintAddress  String
+  assetType    AssetType
+  metadata     Json?
+  balance      Decimal   @default(0)
+  lastSync     DateTime  @default(now())
+
+  wallet       Wallet    @relation(fields: [walletId], references: [id], onDelete: Cascade)
+
+  @@unique([walletId, mintAddress])
+  @@map("asset_caches")
+  @@index([walletId])
+  @@index([mintAddress])
+}
+
+enum AssetType {
+  SPL_TOKEN
+  NFT
+  DEFI_POSITION
+}
+
+model DeFiInteraction {
+  id             String       @id @default(cuid())
+  transactionId  String
+  protocol       String
+  action         String
+  decodedParams   Json?
+  riskNote       String?
+
+  transaction    Transaction  @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+
+  @@map("defi_interactions")
+  @@index([transactionId])
+}
+
